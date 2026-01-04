@@ -33,39 +33,52 @@ Responda sempre em Português do Brasil.
 
 if minha_chave:
     try:
-        # Configuração forçada da API
         genai.configure(api_key=minha_chave)
         
-        # Usando o nome completo do modelo para evitar o erro 404
-        # 'models/gemini-1.5-flash' é o endereço estável oficial
-        model = genai.GenerativeModel(model_name='models/gemini-1.5-flash')
-
-        if "messages" not in st.session_state:
-            st.session_state.messages = []
-
-        # Exibir mensagens
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-
-        if prompt := st.chat_input("Como a Nice pode te ajudar hoje?"):
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
-
-            # Gerar resposta
-            contexto = f"{PROMPT_SISTEMA}\n\nPergunta do cliente: {prompt}"
+        # --- LÓGICA DE TENTATIVA E ERRO PARA O MODELO ---
+        if "modelo_confirmado" not in st.session_state:
+            # Lista de nomes possíveis que o Google aceita dependendo da versão
+            tentativas = ["gemini-1.5-flash", "models/gemini-1.5-flash", "gemini-pro"]
+            sucesso = False
             
-            # Chamada simplificada para garantir compatibilidade
-            response = model.generate_content(contexto)
+            for nome in tentativas:
+                try:
+                    teste_model = genai.GenerativeModel(model_name=nome)
+                    # Tenta uma resposta curtinha só para validar
+                    teste_model.generate_content("oi") 
+                    st.session_state.modelo_confirmado = nome
+                    sucesso = True
+                    break
+                except:
+                    continue
             
-            st.session_state.messages.append({"role": "assistant", "content": response.text})
-            with st.chat_message("assistant"):
-                st.markdown(response.text)
+            if not sucesso:
+                st.error("Não conseguimos conectar com os modelos Gemini. Verifique se sua chave API está correta e ativa no Google AI Studio.")
+
+        # Se encontrou um modelo que funciona
+        if "modelo_confirmado" in st.session_state:
+            model = genai.GenerativeModel(model_name=st.session_state.modelo_confirmado)
+
+            if "messages" not in st.session_state:
+                st.session_state.messages = []
+
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+
+            if prompt := st.chat_input("Como a Nice pode te ajudar hoje?"):
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+
+                contexto = f"{PROMPT_SISTEMA}\n\nPergunta: {prompt}"
+                response = model.generate_content(contexto)
+                
+                st.session_state.messages.append({"role": "assistant", "content": response.text})
+                with st.chat_message("assistant"):
+                    st.markdown(response.text)
                 
     except Exception as e:
-        # Se o erro 404 persistir, ele mostrará uma mensagem amigável
-        st.error(f"Erro de conexão com o modelo: {e}")
-        st.info("Dica: Verifique se sua chave no Google AI Studio está ativa.")
+        st.error(f"Erro inesperado: {e}")
 else:
-    st.info("🌿 Por favor, configure a chave API nos Secrets do Streamlit para começar.")
+    st.info("🌿 Por favor, configure a chave API nos Secrets para começar.")
